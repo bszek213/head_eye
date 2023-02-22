@@ -1,0 +1,43 @@
+name: vedb_analysis38
+channels:
+  - anaconda
+  - conda-forge
+  - phausamann
+  - auto 
+  - vedb
+  - omnia
+  - plotly
+  - pytorch
+dependencies:
+  - python==3.8
+  - numpy
+  - scipy
+  - matplotlib
+  - jupyter
+  - ipython
+  - pillow
+  - h5py==3.6
+  - tqdm
+  - seaborn
+  - pandas
+  - eigen3
+  - opencv
+  - cython
+  - numexpr
+  - appdirs
+  - scikit-learn
+  - scikit-image
+  - shapely
+  - msgpack-python==0.6.2
+  - python-wget
+  - python-couchdb
+  - pip
+  - pypng
+  - pupil_recording_interface
+  - rigid-body-motion
+  - pytorch
+  - torchvision
+  - plotly
+  - pip:
+    - netcdf4
+    - imageio-ffmpeg

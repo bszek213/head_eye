@@ -1,0 +1,35 @@
+name: vedb_analysis_dlc
+channels:
+  - anaconda
+  - conda-forge
+  - auto 
+  - vedb
+  - omnia
+dependencies:
+  - python==3.7
+  - numpy
+  - scipy
+  - matplotlib
+  - opencv>=4.0.0
+  - jupyter
+  - ipython
+  - pillow
+  - tqdm
+  - eigen3
+  - cython
+  - numexpr
+  - appdirs
+  - scikit-learn
+  - scikit-image
+  - shapely
+  - msgpack-python==0.6.2
+  - python-wget
+  - python-couchdb
+  - pip
+  - pypng
+  - pupil_recording_interface
+  - tensorflow-gpu==1.15.0
+  - pip:
+    - netcdf4
+    - imageio-ffmpeg
+    - polyfit
