@@ -3,12 +3,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import vedb_gaze
 import vedb_store
-from vedb_odometry import vedb_calibration
+from odopy import headCalibrate
 import os
 import yaml
 from tqdm import tqdm
 from sys import argv
-import pickle
+# import pickle
 n_cores = None 
 
 #TODO: SAVE EACH FUNCTION OUTPUT TO FILE
@@ -40,11 +40,18 @@ class eyeHead():
                         *mark_times["calibration_times"][self.calibration_epoch], self.ses.get_video_time("eye_right"))
     def calibration_markers_find(self):
         print('Find calibration markers')
-        self.calibration_markers = vedb_gaze.marker_detection.find_concentric_circles(self.world_vid_file, self.world_time_file, 
-                                                                start_frame=self.marker_times['calibration_frames'][0][0], 
-                                                                end_frame=self.marker_times['calibration_frames'][0][1], 
-                                                                n_cores=n_cores,
-                                                                progress_bar=tqdm)
+        calibration_marker_file = os.path.join(self.input_folder,'calibration_markers.npz')
+        if os.path.exists(calibration_marker_file):
+            self.calibration_markers = dict(np.load(calibration_marker_file))
+        else:    
+            self.calibration_markers = vedb_gaze.marker_detection.find_concentric_circles(self.world_vid_file, self.world_time_file, 
+                                                                    start_frame=self.marker_times['calibration_frames'][0][0], 
+                                                                    end_frame=self.marker_times['calibration_frames'][0][1], 
+                                                                    n_cores=n_cores,
+                                                                    progress_bar=tqdm)
+            temp_calib = self.calibration_markers
+            print(f'saving calibration markers to this file path: {calibration_marker_file}')
+            np.savez(calibration_marker_file, **temp_calib)
     def load_pylids(self):
         print('LOAD PYLIDS DETECTED PUPILS')
         self.pupil = dict(left=dict(np.load(os.path.join(self.input_folder,'pupil_left.npz'), allow_pickle=True)),
@@ -116,11 +123,18 @@ class eyeHead():
                                                                         )
     def validation_markers_calc(self):
         print("VALIDATION MARKERS")
-        self.validation_markers = vedb_gaze.marker_detection.find_checkerboard(self.world_vid_file, self.world_time_file, 
-                                                            start_frame=self.marker_times['validation_frames'][self.validation_epoch][0], 
-                                                            end_frame=self.marker_times['validation_frames'][self.validation_epoch][1],
-                                                            n_cores=n_cores,
-                                                            progress_bar=tqdm)
+        validation_marker_file = os.path.join(self.input_folder,'validation_markers.npz')
+        if os.path.exists(validation_marker_file):
+            self.validation_markers = dict(np.load(validation_marker_file))
+        else:
+            self.validation_markers = vedb_gaze.marker_detection.find_checkerboard(self.world_vid_file, self.world_time_file, 
+                                                                start_frame=self.marker_times['validation_frames'][self.validation_epoch][0], 
+                                                                end_frame=self.marker_times['validation_frames'][self.validation_epoch][1],
+                                                                n_cores=n_cores,
+                                                                progress_bar=tqdm)
+            temp = self.validation_markers
+            print(f'saving validation markers to this file path: {validation_marker_file}')
+            np.savez(validation_marker_file, **temp)
     def gaze_calc(self):
         print('CALCULATE GAZE')
         self.gaze = {}
@@ -170,11 +184,32 @@ class eyeHead():
                 except:
                     print("%s eye error calculation failed."%lr)
                     self.error[lr] = None 
-        left_error = np.mean(self.error['left'][0]['gaze_err'])
-        right_error = np.mean(self.error['right'][0]['gaze_err'])
-        print(f'Gaze left error: {left_error}') 
-        print(f'Gaze right error: {right_error}') 
-
+        # print(self.gaze)
+        left_error = np.mean(self.error['left'][0]['gaze_err_angle'])
+        right_error = np.mean(self.error['right'][0]['gaze_err_angle'])
+        print(f'Gaze left error: {left_error} degrees') 
+        print(f'Gaze right error: {right_error} degrees') 
+        # print(self.error)
+        # #TODO: ADD error plot - h_im = ax.imshow(err['gaze_err_image'], **im_kw) current error due to gaze error image being nans
+        # # if np.mean(self.pupil['left']['confidence']) > np.mean(self.pupil['right']['confidence']):
+        # #     keep_confidence = self.pupil['left']['confidence']
+        # # else:
+        # #     keep_confidence = self.pupil['right']['confidence']
+        # # self.gaze['confidence'] = keep_confidence
+        # #plot the error
+        # vedb_gaze.visualization.plot_error(self.error['right'],self.gaze['right'])
+        # plt.show()
+    def head_calibration(self):
+        odo = headCalibrate.headCalibrate()
+        odo.set_odometry_local(self.input_folder)
+        odo.start_end_plot()
+        odo.t265_to_head_trans()
+        # odo.calc_head_orientation()
+        # head_roll, head_pitch, head_yaw = odo.get_head_orientation()
+        # print(head_pitch.linear_acceleration)
+        # plt.plot(head_pitch.linear_acceleration)
+        # plt.show()
+        odo.plot()
     def run_analysis(self):
         self.eye_utils()
         self.calibration_markers_find()
@@ -183,6 +218,7 @@ class eyeHead():
         self.validation_markers_calc()
         gaze = self.gaze_calc()
         self.gaze_error()
+        self.head_calibration()
         #RBM time
 
 def main():

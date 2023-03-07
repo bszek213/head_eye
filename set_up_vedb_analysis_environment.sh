@@ -130,15 +130,15 @@ cd ..
 
 # ... for odometry processing:
 echo "========================================="
-echo ">>> Installing vedb-odometry"
+echo ">>> Installing odo-py"
 if [ -d vedb-odometry ]
 then
 	:
 else
-	git clone git@github.com:vedb/vedb-odometry.git
+	git clone git@github.com:bszek213/odopy.git
 fi
-cd vedb-odometry
-git checkout dev
+cd odopy
+git checkout main
 python setup.py install
 cd ..
 

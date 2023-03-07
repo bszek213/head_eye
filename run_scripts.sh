@@ -24,4 +24,4 @@ conda activate vedb_analysis38
 conda env list
 echo "Run marker detection, head analysis, and validation marker scipt"
 # Run the marker and validation script with an argument
-python eye_head.py "$1"
+python eye_head_class.py "$1"

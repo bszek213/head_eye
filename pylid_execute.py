@@ -3,9 +3,10 @@ import os
 from sys import argv
 
 #TODO: UPDATE FILE PATH TO SAVE NPZ TO INPUT_DIRECTORY
+
 def pylids_run():
     import pylids
-    import pickle
+    # import pickle
     #example: os.path.join("/home/bszekely/Desktop/eye_pipeline/test_data","eye1.mp4")
     #save_vid=True if you want the annotations
     print('Perfrom pylid analysis')
@@ -23,8 +24,8 @@ def pylids_run():
     # with open(os.path.join(argv[1],'eye0.pkl'), 'wb') as f:
     #     pickle.dump(pupil_right, f, protocol=pickle.HIGHEST_PROTOCOL)
 def main():
-    if os.path.exists(os.path.join(argv[1],'eye1.npz')):
-        print('file exists, load in pkle data')
+    if os.path.exists(os.path.join(argv[1],'pupil_left.npz')):
+        print('file exists, load in npz data')
     else:
         pylids_run()
 if __name__ == "__main__":
