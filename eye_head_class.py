@@ -8,6 +8,7 @@ import os
 import yaml
 from tqdm import tqdm
 from sys import argv
+import rigid_body_motion as rbm
 # import pickle
 n_cores = None 
 
@@ -204,12 +205,30 @@ class eyeHead():
         odo.set_odometry_local(self.input_folder)
         odo.start_end_plot()
         odo.t265_to_head_trans()
+        self.calib_odo = odo.get_calibrated_odo()
         # odo.calc_head_orientation()
         # head_roll, head_pitch, head_yaw = odo.get_head_orientation()
         # print(head_pitch.linear_acceleration)
         # plt.plot(head_pitch.linear_acceleration)
         # plt.show()
-        odo.plot()
+        # odo.plot()
+    def setup_ref_frame(self):
+        #World Reference Frame
+        rbm.register_frame("world", update=True)
+        #Head Reference Frame
+        rbm.register_frame("head",
+                            translation=self.calib_odo.lin_pos,
+                            rotation=self.calib_odo.ang_pos,
+                            timestamps=self.calib_odo.time.values,
+                            parent="world",
+                            update=True,
+                            )
+        #Extrinsics reference frame
+        rotation = [30,0,0] #degrees
+        trans_y = 1.25 #inches
+        trans_x = 0 #inches
+        trans_z = 1.15 #inches
+        #Eye reference frame
     def run_analysis(self):
         self.eye_utils()
         self.calibration_markers_find()
