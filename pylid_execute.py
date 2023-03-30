@@ -12,11 +12,14 @@ def pylids_run():
     print('Perfrom pylid analysis')
     pupil_left = pylids.analyze_video(eye_vid=os.path.join(argv[1],"eye1.mp4"),
                                       save_npz=True,
-                                model_name='eyelids_pupils_v2')
+                                      dest_folder=argv[1],
+                                      npz_file=os.path.join(argv[1],"pupil_left.npz"),
+                                      model_name='eyelids_pupils_v2')
     pupil_right = pylids.analyze_video(eye_vid=os.path.join(argv[1],"eye0.mp4"), 
-                                       save_npz=True,
-                                model_name='eyelids_pupils_v2'
-                                )
+                                       save_npz=True, 
+                                       dest_folder=argv[1],
+                                       npz_file=os.path.join(argv[1],"pupil_right.npz"),
+                                       model_name='eyelids_pupils_v2')
     #Save data to binary file
     #HIGHEST_PROTOCOL :  higher values generally resulting in more compact data but potentially slower serialization.
     # with open(os.path.join(argv[1],'eye1.pkl'), 'wb') as f:
