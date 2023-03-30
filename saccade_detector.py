@@ -50,6 +50,9 @@ class saccadeDetect(eyeHead):
         plt.legend()
         plt.show()
     def saccade_thresholding(self):
+        """
+        Use onset offset saccade thresholding and plot the method
+        """
         pass
     def run_analysis(self):
         self.get_gaze()

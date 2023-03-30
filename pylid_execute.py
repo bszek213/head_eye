@@ -2,8 +2,6 @@
 import os
 from sys import argv
 
-#TODO: UPDATE FILE PATH TO SAVE NPZ TO INPUT_DIRECTORY
-
 def pylids_run():
     import pylids
     # import pickle
