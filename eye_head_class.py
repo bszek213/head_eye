@@ -200,6 +200,22 @@ class eyeHead():
         # #plot the error
         # vedb_gaze.visualization.plot_error(self.error['right'],self.gaze['right'])
         # plt.show()
+    def qc_plot(self):
+        # QC Visualization
+        fpath = os.path.join(self.input_folder,'qc_plot.png')
+        pipeline_outputs = dict(pupil=self.pupil,
+                                calibration_marker_all=self.calibration_markers,
+                                calibration_marker_filtered=self.calibration_markers_filtered if self.calibration_markers_filtered is None else self.calibration_markers_filtered[
+                                    self.calibration_epoch],
+                                validation_marker_all=self.validation_markers,
+                                validation_marker_filtered=self.validation_markers_filtered if self.validation_markers_filtered is None else self.validation_markers_filtered,
+                                calibration=self.calibration,
+                                gaze=self.gaze,
+                                error=self.error,)
+        vedb_gaze.visualization.plot_session_qc(self.ses,
+                                                **pipeline_outputs,
+                                                fpath=fpath,
+                                                )
     def head_calibration(self):
         odo = headCalibrate.headCalibrate()
         odo.set_odometry_local(self.input_folder)
@@ -237,6 +253,7 @@ class eyeHead():
         self.validation_markers_calc()
         gaze = self.gaze_calc()
         self.gaze_error()
+        self.qc_plot()
         self.head_calibration()
         #RBM time
 

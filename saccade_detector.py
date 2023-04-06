@@ -12,6 +12,8 @@ y = 43"
 z = 29.25"
 horizontal FOV = 125 deg
 vertical FOV = 110 deg
+Pupil Fs -> 120 Hz
+T265 Fs -> 200
 """
 class saccadeDetect(eyeHead):
     def __init__(self):
@@ -91,12 +93,13 @@ class saccadeDetect(eyeHead):
             ax.set_ylabel('GAZE Y (degrees)')
             ax.set_title(f'{i.capitalize()} Eye Gaze with 95% CI Ellipse. Data within 2 std')
             plt.legend()
-            plt.show()
+            plt.savefig(f'{i}_eye.png',dpi=350)
+
     def saccade_thresholding(self):
         """
         Use onset offset saccade thresholding and plot the method
         """
-        pass
+        pass  
     def run_analysis(self):
         self.get_gaze()
         self.convert_norm_pos_to_degrees()
