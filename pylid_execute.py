@@ -11,11 +11,13 @@ def pylids_run():
     pupil_left = pylids.analyze_video(eye_vid=os.path.join(argv[1],"eye1.mp4"),
                                       save_npz=True,
                                       dest_folder=argv[1],
+                                      timestamp_file=os.path.join(argv[1],"eye1_timestamps.npy"),
                                       npz_file=os.path.join(argv[1],"pupil_left.npz"),
                                       model_name='eyelids_pupils_v2')
     pupil_right = pylids.analyze_video(eye_vid=os.path.join(argv[1],"eye0.mp4"), 
-                                       save_npz=True, 
+                                       save_npz=True,   
                                        dest_folder=argv[1],
+                                       timestamp_file=os.path.join(argv[1],"eye0_timestamps.npy"),
                                        npz_file=os.path.join(argv[1],"pupil_right.npz"),
                                        model_name='eyelids_pupils_v2')
     #Save data to binary file
