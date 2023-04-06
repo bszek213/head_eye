@@ -16,7 +16,7 @@ n_cores = None
 
 class eyeHead():
     def __init__(self):
-        print("instantiate eyeHead class")
+        print("instantiate eyeHead class object")
         self.input_folder = argv[1]
     def eye_utils(self):
         self.calibration_epoch = 0  # first only
