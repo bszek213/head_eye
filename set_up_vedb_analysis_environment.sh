@@ -131,7 +131,7 @@ cd ..
 # ... for odometry processing:
 echo "========================================="
 echo ">>> Installing odo-py"
-if [ -d vedb-odometry ]
+if [ -d odo-py ]
 then
 	:
 else

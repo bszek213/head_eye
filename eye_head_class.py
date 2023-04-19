@@ -12,8 +12,6 @@ import rigid_body_motion as rbm
 # import pickle
 n_cores = None 
 
-#TODO: SAVE EACH FUNCTION OUTPUT TO FILE
-
 class eyeHead():
     def __init__(self):
         print("instantiate eyeHead class object")

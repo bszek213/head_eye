@@ -21,6 +21,7 @@ class saccadeDetect(eyeHead):
         print('Instantiate saccadeDetect object')
         self.fov_horiz = 125 #deg 
         self.fov_vertical = 110 #deg
+        self.pupil_fs = 1/120
     def get_gaze(self):
         print(self.input_folder)
         self.eye_utils()
@@ -94,12 +95,73 @@ class saccadeDetect(eyeHead):
             ax.set_title(f'{i.capitalize()} Eye Gaze with 95% CI Ellipse. Data within 2 std')
             plt.legend()
             plt.savefig(f'{i}_eye.png',dpi=350)
-
+            plt.close()
+    def calc_saccade_velocity(self,array,timestamps):
+        """
+        saccade velocity thresholds onset/offset 80<velocity<900
+        saccadic acceleration thresholds 5000<accel<50000
+        saccadic duration threshold 20 to 50 milliseconds for small saccades and up to around 100
+        """
+        saccade_velocity = abs(np.diff(array) / np.diff(timestamps))
+        # saccade_accel = abs(np.diff(saccade_velocity) / self.pupil_fs)
+        # plt.figure()
+        # plt.plot(saccade_velocity)
+        # plt.show()
+        start_points = []
+        end_points = []
+        above_80 = False
+        for i, value in enumerate(saccade_velocity):
+            if (value > 100 and not above_80):
+                # if saccade_accel[i-1] > 5000:
+                    above_80 = True
+                    start = i
+            elif value < 100 and above_80:
+                above_80 = False
+                end = i
+                time_diff = ((timestamps[end] - timestamps[start])) * 1000 #ms VERY CRUDE WAY OF DOING THIS
+                if time_diff > 20 and time_diff < 100:
+                    start_points.append(start)
+                    end_points.append(i)
+        if above_80:
+            end_points.append(i)
+        mean_saccade_vel = []
+        peak_saccadel_vel = []
+        plt.plot(timestamps,array,marker='o',color='tab:blue')
+        for start, end in zip(start_points, end_points):
+            plt.plot(timestamps[start:end], array[start:end],marker='o', color='tab:orange')
+            # plt.fill_between(timestamps[start:end], saccade_velocity[start:end], color='green',alpha=0.3)
+        plt.ylabel('Elevation (degrees)')
+        plt.legend(['Right Eye Gaze Elevation','Saccade'])
+        plt.xlabel('Timestamp')
+        plt.show()
+        # plt.scatter(timestamps[start_points],saccade_velocity[start_points],marker='*',color='green')
+        # plt.scatter(timestamps[end_points],saccade_velocity[end_points],marker='*',color='green')
+        # plt.show()
+        for i in range(len(end_points)):
+            temp_vel = saccade_velocity[start_points[i]:end_points[i]]
+            if len(temp_vel) > 0:
+                peak_saccadel_vel.append(np.max(temp_vel))
+                mean_saccade_vel.append(np.mean(temp_vel))
+            
     def saccade_thresholding(self):
         """
         Use onset offset saccade thresholding and plot the method
         """
-        pass  
+        horizontal_FOV =  125 / 2
+        vertical_FOV = 110 / 2
+        self.gaze['left']['norm_pos'][:,0] = self.gaze['left']['norm_pos'][:,0] - horizontal_FOV 
+        self.gaze['left']['norm_pos'][:,1] = self.gaze['left']['norm_pos'][:,1] - vertical_FOV
+
+        self.gaze['right']['norm_pos'][:,0] = self.gaze['right']['norm_pos'][:,0] - horizontal_FOV 
+        self.gaze['right']['norm_pos'][:,1] = self.gaze['right']['norm_pos'][:,1] - vertical_FOV
+        self.calc_saccade_velocity(self.gaze['right']['norm_pos'][:,1],self.gaze['right']['timestamp'])
+        # plt.figure()
+        # plt.plot(self.gaze['right']['norm_pos'][:,1])
+        # plt.hist(self.gaze['left']['norm_pos'][:,0],label='az',alpha=0.6,bins=200)
+        # plt.hist(self.gaze['left']['norm_pos'][:,1],label='el',alpha=0.6,bins=200)
+        # plt.legend()
+        # plt.show()
+  
     def run_analysis(self):
         self.get_gaze()
         self.convert_norm_pos_to_degrees()

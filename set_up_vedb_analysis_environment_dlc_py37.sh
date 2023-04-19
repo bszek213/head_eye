@@ -151,7 +151,7 @@ else
 	git clone git@github.com:nipype/pydra.git
 fi
 cd pydra
-python setup.py install
+pip install -e ".[dev]"
 cd ..
 
 # ... pylids (for dlc based pupil and eyelid detection)
@@ -161,7 +161,7 @@ if [ -d pylids ]
 then
         :
 else
-        git clone git@github.com:vedb/pylids.git
+        git clone git@github.com:piecesofmindlab/pylids.git
 fi
 cd pylids
 git checkout main
@@ -172,13 +172,13 @@ cd ..
 
 echo "========================================"
 echo ">>> Installing deeplabcut"
-if [ -d deeplabcut ]
+if [ -d DeepLabCut ]
 then
         :
 else
-        git clone git@github.com:arnabiswas/deeplabcut.git
+        git clone git@github.com:arnabiswas/DeepLabCut.git
 fi
-cd deeplabcut
+cd DeepLabCut
 pip install tables==3.6.1
 git checkout pylids
 python setup.py install
