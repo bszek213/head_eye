@@ -16,6 +16,9 @@ class eyeHead():
     def __init__(self):
         print("instantiate eyeHead class object")
         self.input_folder = argv[1]
+        self.fov_horiz = 125 #deg 
+        self.fov_vertical = 110 #deg
+        self.pupil_fs = 1/120
     def eye_utils(self):
         self.calibration_epoch = 0  # first only
         self.validation_epoch = 0  # first only
@@ -226,6 +229,24 @@ class eyeHead():
         # plt.plot(head_pitch.linear_acceleration)
         # plt.show()
         # odo.plot()
+    def convert_norm_pos_to_degrees(self):
+        """
+        Right now I am overwriting the previous values. 
+        in the future I need to save these to a new variable
+        """
+        self.gaze['left']['gaze_degrees'] = np.zeros((len(self.gaze['left']['norm_pos'][:,0]), 2))
+        self.gaze['right']['gaze_degrees'] = np.zeros((len(self.gaze['right']['norm_pos'][:,0]), 2))
+        self.gaze['left']['gaze_degrees'][:,0] = self.gaze['left']['norm_pos'][:,0] * self.fov_horiz
+        self.gaze['right']['gaze_degrees'][:,0] = self.gaze['right']['norm_pos'][:,0] * self.fov_horiz
+        self.gaze['left']['gaze_degrees'][:,1] = self.gaze['left']['norm_pos'][:,1] * self.fov_vertical
+        self.gaze['right']['gaze_degrees'][:,1] = self.gaze['right']['norm_pos'][:,1] * self.fov_vertical
+        #orient about 0
+        horizontal_FOV =  self.fov_horiz / 2
+        vertical_FOV = self.fov_vertical / 2
+        self.gaze['left']['gaze_degrees'][:,0] = self.gaze['left']['gaze_degrees'][:,0] - horizontal_FOV 
+        self.gaze['left']['gaze_degrees'][:,1] = self.gaze['left']['gaze_degrees'][:,1] - vertical_FOV
+        self.gaze['right']['gaze_degrees'][:,0] = self.gaze['right']['gaze_degrees'][:,0] - horizontal_FOV 
+        self.gaze['right']['gaze_degrees'][:,1] = self.gaze['right']['gaze_degrees'][:,1] - vertical_FOV
     def setup_ref_frame(self):
         #World Reference Frame
         rbm.register_frame("world", update=True)
@@ -237,6 +258,18 @@ class eyeHead():
                             parent="world",
                             update=True,
                             )
+        self.gaze_3d = np.array((self.gaze['left']['gaze_degrees'][:,0].reshape(-1), 
+                       self.gaze['left']['gaze_degrees'][:,1].reshape(-1),
+                       np.zeros((len(self.gaze['left']['gaze_degrees'][:,0])))
+                       )).T
+        print(self.gaze_3d)
+        #mulitply the eye in world camera by the extrinsic rotation
+        eye_orient = rbm.shortest_arc_rotation(self.gaze_3d,np.array((0, 0, 1)))
+        print(eye_orient)
+        # fig, ax = plt.subplots(1,2)
+        # ax[0].plot(self.gaze['left']['timestamp'],self.gaze_3d[:,0],label='gaze x')
+        # ax[1].plot(self.gaze['left']['timestamp'],eye_orient[:,1],label='gaze quaternion')
+        plt.show()
         #Extrinsics reference frame
         rotation = [30,0,0] #degrees
         trans_y = 1.25 #inches
@@ -252,8 +285,10 @@ class eyeHead():
         gaze = self.gaze_calc()
         self.gaze_error()
         self.qc_plot()
+        self.convert_norm_pos_to_degrees()
         self.head_calibration()
         #RBM time
+        self.setup_ref_frame()
 
 def main():
     eyeHead().run_analysis()
