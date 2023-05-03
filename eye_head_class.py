@@ -21,7 +21,9 @@ class eyeHead():
         self.fov_vertical = 110 #deg
         self.pupil_fs = 1/120
         #Extrinsics reference frame
-        self.rotation_extrinsics = [30,0,0] #degrees
+        self.rotation_extrinsics = [0.5235988, 0, 0]
+        # self.rotation_extrinsics = [30,0,0] #degrees
+        self.rotation_extrinsics_quat = [0.9781476007, 0.2079116908, 0, 0]
         self.trans_y = 1.25 #inches
         self.trans_x = 0 #inches
         self.trans_z = 1.15 #inches
@@ -313,38 +315,41 @@ class eyeHead():
         eye_orient_right = rbm.shortest_arc_rotation(self.gaze_3d_right,np.array((0, 0, 1)))
     
         # fig, ax = plt.subplots(1,2)
-        plt.figure()
-        # Convert quaternion array to Euler angle array
-        euler_array = np.zeros((eye_orient_left.shape[0], 3))
-        for i, quaternion in enumerate(eye_orient_left):
-            r = Rotation.from_quat(quaternion) #this expects [x,y,z,w]. We use [w,x,y,z]
-            euler = r.as_euler('xyz')
-            euler_array[i] = euler
+        # plt.figure()
+        # # Convert quaternion array to Euler angle array
+        # euler_array = np.zeros((eye_orient_left.shape[0], 3))
+        # for i, quaternion in enumerate(eye_orient_left):
+        #     modified_quaternion = [quaternion[3], quaternion[0], quaternion[1], quaternion[2]]  # Change order to [w, x, y, z]
+        #     r = Rotation.from_quat(modified_quaternion)
+        #     euler = r.as_euler('xyz',degrees=True)
+        #     euler_array[i] = euler
 
-        plt.plot(eye_global_timestamps,euler_array[:,1],label='gaze x')
+        # plt.plot(eye_global_timestamps,euler_array[:,1],label='gaze x')
         # ax[1].plot(self.gaze['left']['timestamp'],eye_orient[:,1],label='gaze quaternion')
         #transform extrinsics to quaternions
         extrinsic_quat = rbm.from_euler_angles(roll=self.rotation_extrinsics[2],
                               pitch=self.rotation_extrinsics[0],
                               yaw=self.rotation_extrinsics[1])
+        print(extrinsic_quat)
         #Apply extrinsics rotation to eye data: DO I APPLY THE QINV HERE?
-        eye_in_head_coordinates = rbm.qmul(eye_orient_left, extrinsic_quat)
+        eye_in_head_coordinates = rbm.qmul(eye_orient_left, extrinsic_quat)#np.array(self.rotation_extrinsics_quat)
         
-        euler_array = np.zeros((eye_in_head_coordinates.shape[0], 3))
-        for i, quaternion in enumerate(eye_in_head_coordinates):
-            r = Rotation.from_quat(quaternion)
-            euler = r.as_euler('xyz')
-            euler_array[i] = euler
-        plt.plot(eye_global_timestamps,euler_array[:,1],label='gaze rotated')
-        plt.legend()
-        plt.show()
+        # euler_array = np.zeros((eye_in_head_coordinates.shape[0], 3))
+        # for i, quaternion in enumerate(eye_in_head_coordinates):
+        #     modified_quaternion = [quaternion[3], quaternion[0], quaternion[1], quaternion[2]]  # Change order to [w, x, y, z]
+        #     r = Rotation.from_quat(modified_quaternion)
+        #     euler = r.as_euler('xyz',degrees=True)
+        #     euler_array[i] = euler
+        # plt.plot(eye_global_timestamps,euler_array[:,1],label='gaze rotated')
+        # plt.legend()
+        # plt.show()
         #Setup eye transform
-        # rbm.register_frame("eye",
-        #                     rotation=eye_in_head_coordinates,
-        #                     timestamps=self.calib_odo.time.values,
-        #                     parent="head",
-        #                     update=True,
-        #                     )
+        rbm.register_frame("eye",
+                            rotation=eye_in_head_coordinates,
+                            timestamps=eye_global_timestamps,
+                            parent="head",
+                            update=True,
+                            )
     def run_analysis(self):
         self.eye_utils()
         self.calibration_markers_find()
