@@ -9,6 +9,7 @@ import yaml
 from tqdm import tqdm
 from sys import argv
 import rigid_body_motion as rbm
+from scipy.spatial.transform import Rotation
 # import pickle
 n_cores = None 
 
@@ -19,6 +20,11 @@ class eyeHead():
         self.fov_horiz = 125 #deg 
         self.fov_vertical = 110 #deg
         self.pupil_fs = 1/120
+        #Extrinsics reference frame
+        self.rotation_extrinsics = [30,0,0] #degrees
+        self.trans_y = 1.25 #inches
+        self.trans_x = 0 #inches
+        self.trans_z = 1.15 #inches
     def eye_utils(self):
         self.calibration_epoch = 0  # first only
         self.validation_epoch = 0  # first only
@@ -217,6 +223,7 @@ class eyeHead():
                                                 **pipeline_outputs,
                                                 fpath=fpath,
                                                 )
+        plt.close()
     def head_calibration(self):
         odo = headCalibrate.headCalibrate()
         odo.set_odometry_local(self.input_folder)
@@ -258,24 +265,86 @@ class eyeHead():
                             parent="world",
                             update=True,
                             )
-        self.gaze_3d = np.array((self.gaze['left']['gaze_degrees'][:,0].reshape(-1), 
-                       self.gaze['left']['gaze_degrees'][:,1].reshape(-1),
-                       np.zeros((len(self.gaze['left']['gaze_degrees'][:,0])))
+
+        #find the closest timestamps in a the longer eye gaze data structure
+        if len(self.gaze['left']['timestamp']) > len(self.gaze['right']['timestamp']):
+            longer_list = self.gaze['left']['timestamp']
+            shorter_list = self.gaze['right']['timestamp']
+        else:
+            longer_list = self.gaze['right']['timestamp']
+            shorter_list = self.gaze['left']['timestamp']
+        closest_values = []
+        indices = []
+        print('Find timestamps in both arrays to make them equivalent')
+        for value in tqdm(shorter_list):
+            closest_value = longer_list[np.abs(longer_list - value).argmin()]
+            closest_values.append(closest_value)
+            closest_index = np.where(longer_list == closest_value)[0][0]
+            indices.append(closest_index)
+        eye_global_timestamps = closest_values
+
+        if len(self.gaze['left']['timestamp']) > len(self.gaze['right']['timestamp']):
+            gaze_left_equal = self.gaze['left']['gaze_degrees'][indices,:]
+            gaze_right_equal = self.gaze['right']['gaze_degrees']
+        else:
+            gaze_left_equal = self.gaze['left']['gaze_degrees']
+            gaze_right_equal = self.gaze['right']['gaze_degrees'][indices,:]
+
+        #Create "3D" gaze matrix with the z axis (torsion) with 0
+        self.gaze_3d_left = np.array((gaze_left_equal[:,0].reshape(-1), 
+                       gaze_left_equal[:,1].reshape(-1),
+                       np.zeros((len(gaze_left_equal[:,0])))
                        )).T
-        print(self.gaze_3d)
+        self.gaze_3d_right = np.array((gaze_right_equal[:,0].reshape(-1), 
+                       gaze_right_equal[:,1].reshape(-1),
+                       np.zeros((len(gaze_right_equal[:,0])))
+                       )).T
+        # self.gaze_3d_left = np.array((self.gaze['left']['gaze_degrees'][:,0].reshape(-1), 
+        #                self.gaze['left']['gaze_degrees'][:,1].reshape(-1),
+        #                np.zeros((len(self.gaze['left']['gaze_degrees'][:,0])))
+        #                )).T
+        # self.gaze_3d_right = np.array((self.gaze['right']['gaze_degrees'][:,0].reshape(-1), 
+        #                self.gaze['right']['gaze_degrees'][:,1].reshape(-1),
+        #                np.zeros((len(self.gaze['right']['gaze_degrees'][:,0])))
+        #                )).T
+
         #mulitply the eye in world camera by the extrinsic rotation
-        eye_orient = rbm.shortest_arc_rotation(self.gaze_3d,np.array((0, 0, 1)))
-        print(eye_orient)
+        eye_orient_left = rbm.shortest_arc_rotation(self.gaze_3d_left,np.array((0, 0, 1)))
+        eye_orient_right = rbm.shortest_arc_rotation(self.gaze_3d_right,np.array((0, 0, 1)))
+    
         # fig, ax = plt.subplots(1,2)
-        # ax[0].plot(self.gaze['left']['timestamp'],self.gaze_3d[:,0],label='gaze x')
+        plt.figure()
+        # Convert quaternion array to Euler angle array
+        euler_array = np.zeros((eye_orient_left.shape[0], 3))
+        for i, quaternion in enumerate(eye_orient_left):
+            r = Rotation.from_quat(quaternion) #this expects [x,y,z,w]. We use [w,x,y,z]
+            euler = r.as_euler('xyz')
+            euler_array[i] = euler
+
+        plt.plot(eye_global_timestamps,euler_array[:,1],label='gaze x')
         # ax[1].plot(self.gaze['left']['timestamp'],eye_orient[:,1],label='gaze quaternion')
+        #transform extrinsics to quaternions
+        extrinsic_quat = rbm.from_euler_angles(roll=self.rotation_extrinsics[2],
+                              pitch=self.rotation_extrinsics[0],
+                              yaw=self.rotation_extrinsics[1])
+        #Apply extrinsics rotation to eye data: DO I APPLY THE QINV HERE?
+        eye_in_head_coordinates = rbm.qmul(eye_orient_left, extrinsic_quat)
+        
+        euler_array = np.zeros((eye_in_head_coordinates.shape[0], 3))
+        for i, quaternion in enumerate(eye_in_head_coordinates):
+            r = Rotation.from_quat(quaternion)
+            euler = r.as_euler('xyz')
+            euler_array[i] = euler
+        plt.plot(eye_global_timestamps,euler_array[:,1],label='gaze rotated')
+        plt.legend()
         plt.show()
-        #Extrinsics reference frame
-        rotation = [30,0,0] #degrees
-        trans_y = 1.25 #inches
-        trans_x = 0 #inches
-        trans_z = 1.15 #inches
-        #Eye reference frame
+        #Setup eye transform
+        # rbm.register_frame("eye",
+        #                     rotation=eye_in_head_coordinates,
+        #                     timestamps=self.calib_odo.time.values,
+        #                     parent="head",
+        #                     update=True,
+        #                     )
     def run_analysis(self):
         self.eye_utils()
         self.calibration_markers_find()
