@@ -14,7 +14,11 @@ from scipy.spatial.transform import Rotation
 from scipy import signal
 # import pickle
 n_cores = None 
-
+"""
+TODO: HIGH PRIORITY - MAKE THE eye_global_timestamps AS DATETIME64 NUMPY TO MATCH PETERS RBM PACKAGE
+ALSO WHEN I CONVERT eye_global_timestamps TO DATETIME64 IT PUTS THE YEAR AS 1970, NEED TO GRAB YEAR FROM
+PETERS ODO RBM
+"""
 class eyeHead():
     def __init__(self):
         print("instantiate eyeHead class object")
@@ -285,7 +289,20 @@ class eyeHead():
             closest_values.append(closest_value)
             closest_index = np.where(longer_list == closest_value)[0][0]
             indices.append(closest_index)
-        eye_global_timestamps = closest_values
+        eye_global_timestamps = np.array(closest_values)
+        #TODO: HIGH PRIORITY - MAKE THE eye_global_timestamps AS DATETIME64 NUMPY TO MATCH PETERS RBM PACKAGE
+        #Linearly interpolate missing values
+        nan_indices = np.isnan(eye_global_timestamps)
+        non_nan_indices = ~nan_indices
+        #Interpolate only NaN values
+        eye_global_timestamps_interpolated = np.copy(eye_global_timestamps)
+        eye_global_timestamps_interpolated[nan_indices] = np.interp(
+            np.arange(len(eye_global_timestamps))[nan_indices],
+            non_nan_indices,
+            eye_global_timestamps[non_nan_indices]
+        )
+        #Convert the interpolated array to datetime64
+        eye_global_timestamps_datetime = np.array(eye_global_timestamps_interpolated, dtype='datetime64[ns]')
 
         if len(self.gaze['left']['timestamp']) > len(self.gaze['right']['timestamp']):
             gaze_left_equal = self.gaze['left']['gaze_degrees'][indices,:]
@@ -335,8 +352,10 @@ class eyeHead():
         print(extrinsic_quat)
         #Apply extrinsics rotation to eye data: DO I APPLY THE QINV HERE?
         eye_in_head_coordinates = rbm.qmul(eye_orient_left, extrinsic_quat)#np.array(self.rotation_extrinsics_quat)
-        upsample_head_ang = signal.resample(self.calib_odo.ang_pos.values, len(eye_in_head_coordinates))
-        eye_result = rbm.qmul(eye_in_head_coordinates,upsample_head_ang)
+        # upsample_head = signal.resample(self.calib_odo.ang_pos.values, len(eye_in_head_coordinates))
+        downsample_eye = signal.resample(eye_in_head_coordinates, len(self.calib_odo.ang_pos.values))
+
+        eye_result = rbm.qmul(downsample_eye,self.calib_odo.ang_pos.values)
         # euler_array = np.zeros((eye_in_head_coordinates.shape[0], 3))
         # for i, quaternion in enumerate(eye_in_head_coordinates):
         #     modified_quaternion = [quaternion[3], quaternion[0], quaternion[1], quaternion[2]]  # Change order to [w, x, y, z]
@@ -349,16 +368,38 @@ class eyeHead():
         #Setup eye transform
         rbm.register_frame("eye",
                             rotation=eye_result,
-                            timestamps=eye_global_timestamps,
+                            timestamps=self.calib_odo.time.values,#eye_global_timestamps,
                             parent="head",
                             update=True,
                             )
         eye_world = rbm.lookup_angular_velocity("eye","world",as_dataarray=True,represent_in='eye')
-
         eye_world = np.rad2deg(eye_world)
-        print(eye_world)
-        input()
-        plt.plot()
+        #Plot eye_world on the first y-axis
+        #plot between 47:14.2 - 47:15.2
+        plt.rcParams.update({
+            'font.size': 16,
+            'axes.labelweight': 'bold',
+            'axes.titlesize': 16,
+            'legend.fontsize': 14,
+        })
+        plt.rcParams["font.weight"] = "bold"
+        fig, ax1 = plt.subplots()
+        ax1.plot(self.calib_odo.time.values, eye_world[:, 0],
+                  label='Azimuth Velocity (deg/s)', color='blue',linewidth=3.5)
+        ax1.plot(self.calib_odo.time.values, eye_world[:, 1], 
+                 label='Elevation Velocity (deg/s)', color='green',linewidth=3.5)
+        ax1.set_xlabel('Time')
+        ax1.set_ylabel('Eye Velocity (deg/s)', color='black')
+        ax1.legend(loc='upper left')
+
+        # Create a second y-axis
+        ax2 = ax1.twinx()
+        ax2.plot(self.calib_odo.time.values, self.calib_odo.lin_vel[:,2].values,
+                  color='red',linewidth=3.5)
+        ax2.set_ylabel('Linear Vertical Head Velocity (m/s)', color='black')
+        ax2.legend(loc='upper right')
+        plt.show()
+
     def run_analysis(self):
         self.eye_utils()
         self.calibration_markers_find()
