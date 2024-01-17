@@ -3,13 +3,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import vedb_gaze
 import vedb_store
-from odopy import headCalibrate
+# from odopy import headCalibrate #change this to vedb-odometry
+from vedb_odometry import vedb_calibration
 import os
 import yaml
 from tqdm import tqdm
 from sys import argv
 import rigid_body_motion as rbm
 from scipy.spatial.transform import Rotation
+from scipy import signal
 # import pickle
 n_cores = None 
 
@@ -227,7 +229,7 @@ class eyeHead():
                                                 )
         plt.close()
     def head_calibration(self):
-        odo = headCalibrate.headCalibrate()
+        odo = vedb_calibration.vedbCalibration()
         odo.set_odometry_local(self.input_folder)
         odo.start_end_plot()
         odo.t265_to_head_trans()
@@ -263,7 +265,7 @@ class eyeHead():
         rbm.register_frame("head",
                             translation=self.calib_odo.lin_pos,
                             rotation=self.calib_odo.ang_pos,
-                            timestamps=self.calib_odo.time.values,
+                            timestamps=self.calib_odo.time,
                             parent="world",
                             update=True,
                             )
@@ -333,7 +335,8 @@ class eyeHead():
         print(extrinsic_quat)
         #Apply extrinsics rotation to eye data: DO I APPLY THE QINV HERE?
         eye_in_head_coordinates = rbm.qmul(eye_orient_left, extrinsic_quat)#np.array(self.rotation_extrinsics_quat)
-        
+        upsample_head_ang = signal.resample(self.calib_odo.ang_pos.values, len(eye_in_head_coordinates))
+        eye_result = rbm.qmul(eye_in_head_coordinates,upsample_head_ang)
         # euler_array = np.zeros((eye_in_head_coordinates.shape[0], 3))
         # for i, quaternion in enumerate(eye_in_head_coordinates):
         #     modified_quaternion = [quaternion[3], quaternion[0], quaternion[1], quaternion[2]]  # Change order to [w, x, y, z]
@@ -345,11 +348,17 @@ class eyeHead():
         # plt.show()
         #Setup eye transform
         rbm.register_frame("eye",
-                            rotation=eye_in_head_coordinates,
+                            rotation=eye_result,
                             timestamps=eye_global_timestamps,
                             parent="head",
                             update=True,
                             )
+        eye_world = rbm.lookup_angular_velocity("eye","world",as_dataarray=True,represent_in='eye')
+
+        eye_world = np.rad2deg(eye_world)
+        print(eye_world)
+        input()
+        plt.plot()
     def run_analysis(self):
         self.eye_utils()
         self.calibration_markers_find()

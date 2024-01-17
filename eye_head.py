@@ -80,11 +80,16 @@ def calibration(ses):
                                                                         max_stds_for_outliers=3.0,
                                                                         )
 def load_pylids(input_folder):
-    with open(os.path.join(input_folder,'eye1.pkl'), 'rb') as f:
-        pupil_left = pickle.load(f)
-    with open(os.path.join(input_folder,'eye0.pkl'), 'rb') as f:
-        pupil_right = pickle.load(f)
+    # with open(os.path.join(input_folder,'eye1.pkl'), 'rb') as f:
+    #     pupil_left = pickle.load(f)
+    pupil_left = np.load(os.path.join(input_folder, 'pupil_left.npz'))
+    # with open(os.path.join(input_folder,'eye0.pkl'), 'rb') as f:
+    #     pupil_right = pickle.load(f)
+    pupil_right = np.load(os.path.join(input_folder, 'pupil_right.npz'))
+    print(pupil_left)
+    input()
     return pupil_left, pupil_right
+    
 def head():
     odo = vedb_calibration.vedbCalibration()
     odo.set_odometry_local(argv[1])
