@@ -1,10 +1,10 @@
-# Eye and Head analyss: Brian Szekely
+# Eye and Head analysis: Brian Szekely
 import matplotlib.pyplot as plt
 import numpy as np
 import vedb_gaze
 import vedb_store
 # from odopy import headCalibrate #change this to vedb-odometry
-from vedb_odometry import vedb_calibration
+from vedb_odometry import vedb_calibration #remove this after odopy is fixed
 import os
 import yaml
 from tqdm import tqdm

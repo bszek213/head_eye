@@ -14,6 +14,8 @@ horizontal FOV = 125 deg
 vertical FOV = 110 deg
 Pupil Fs -> 120 Hz
 T265 Fs -> 200
+
+CURRENTLY WORK IN PROGRESS - DO NOT USE
 """
 class saccadeDetect(eyeHead):
     def __init__(self):
