@@ -10,14 +10,21 @@ import yaml
 from tqdm import tqdm
 from sys import argv
 import rigid_body_motion as rbm
-from scipy.spatial.transform import Rotation
+# from scipy.spatial.transform import Rotation
 from scipy import signal
-from scipy.ndimage import gaussian_filter1d
+# from scipy.ndimage import gaussian_filter1d
 from scipy.signal import medfilt
+from matplotlib.patches import Ellipse
 # import seaborn as sns
 from scipy.interpolate import interp1d
 # import pickle
 n_cores = None 
+plt.rcParams['font.weight'] = 'bold'
+plt.rcParams['font.size'] = 18
+plt.rcParams['axes.labelsize'] = 18
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['axes.titlesize'] = 18
+plt.rcParams['axes.titleweight'] = 'bold'
 """
 Current issues
 -Cannot use any qmul on the calibrated odo data as the orientation data are just a unit quaternion [1,0,0,0]
@@ -140,6 +147,7 @@ class eyeHead():
                         *mark_times["calibration_times"][self.calibration_epoch], self.ses.get_video_time("eye_left"))
         eye_right_st, eye_right_end = vedb_store.utils.get_frame_indices(
                         *mark_times["calibration_times"][self.calibration_epoch], self.ses.get_video_time("eye_right"))
+
     def calibration_markers_find(self):
         print('Find calibration markers')
         calibration_marker_file = os.path.join(self.input_folder,'calibration_markers.npz')
@@ -512,8 +520,19 @@ class eyeHead():
         #apply this v′=q⋅v⋅q−1
         #upsample to remove velocity error
         odo_ang_vel_vestib = rbm.transform_vectors(self.odometry.angular_velocity,outof='t265_world',into='t265_vestibular')
+        if np.isnan(odo_ang_vel_vestib.values).any():
+            nan_indices = np.isnan(odo_ang_vel_vestib.values)
+            x = np.arange(odo_ang_vel_vestib.values.shape[0])
+            interpolated_data = np.empty_like(odo_ang_vel_vestib.values)
+            for i in range(odo_ang_vel_vestib.values.shape[1]):
+                valid_indices = ~nan_indices[:, i]
+                interp_func = interp1d(x[valid_indices], odo_ang_vel_vestib.values[valid_indices, i], kind='linear', fill_value='extrapolate')
+                interpolated_data[:, i] = interp_func(x)
+        else:
+            interpolated_data = odo_ang_vel_vestib.values
+
         # odo_ang_vel_vestib = self.calib_odo.ang_vel.values
-        ang_vel_t265_down = signal.resample(odo_ang_vel_vestib, len(eye_in_head_coordinates)) #len(self.calib_odo.ang_pos.values)
+        ang_vel_t265_down = signal.resample(interpolated_data, len(eye_in_head_coordinates)) #len(self.calib_odo.ang_pos.values)
         
         #Perform quaternion multiplication for each angular velocity vector separately
         num_samples = ang_vel_t265_down.shape[0]
@@ -539,23 +558,21 @@ class eyeHead():
             # print(rotated_ang_vel)
             # Extract the vector part from the rotated angular velocity quaternion
             transformed_angular_velocity[i] = rotated_ang_vel
-        # print(transformed_angular_velocity)
-        fig, ax = plt.subplots(nrows=2,ncols=1)
-        # plt.plot(transformed_angular_velocity[:,0],label='transformed x')
-        ax[0].hist(transformed_angular_velocity[:,1],label='transformed y',bins=500)
-        ax[1].hist(transformed_angular_velocity[:,2],label='transformed z',bins=500)
-        # plt.plot(transformed_angular_velocity[:,2],label='transformed z')
-        # plt.plot(ang_vel_t265_down[:,0],label='untransformed x')
-        ax[0].hist(ang_vel_t265_down[:,1],label='untransformed y',bins=500,alpha=0.4)
-        ax[1].hist(ang_vel_t265_down[:,2],label='untransformed z',bins=500,alpha=0.4)
-        # plt.plot(ang_vel_t265_down[:,2],label='untransformed z')
-        plt.ylabel('odo ang vel (rad/s)')
-        plt.xlabel('sample')
-        ax[0].legend()
-        ax[1].legend()
-        # plt.legend()
-        plt.show()
-        input()
+        self.transformed_angular_velocity_world = transformed_angular_velocity
+        #plot hist of azimuth and elevation
+        # fig, ax = plt.subplots(nrows=2,ncols=1)
+        # # plt.plot(transformed_angular_velocity[:,0],label='transformed x')
+        # ax[0].hist(transformed_angular_velocity[:,1],label='transformed y',bins=500)
+        # ax[1].hist(transformed_angular_velocity[:,2],label='transformed z',bins=500)
+        # ax[0].hist(ang_vel_t265_down[:,1],label='untransformed y',bins=500,alpha=0.4)
+        # ax[1].hist(ang_vel_t265_down[:,2],label='untransformed z',bins=500,alpha=0.4)
+        # plt.ylabel('odo ang vel (rad/s)')
+        # plt.xlabel('sample')
+        # ax[0].legend()
+        # ax[1].legend()
+        # plt.show()
+
+
         # fig, ax = plt.subplots(1,2)
         # plt.figure()
         # # Convert quaternion array to Euler angle array
@@ -588,17 +605,17 @@ class eyeHead():
         # plt.plot(eye_orient_right_normalized)
         # plt.show()
         #Setup eye transform
-        print(rbm.render_tree("world"))
+        # print(rbm.render_tree("world"))
 
-        self.rbm_head_eye.register_frame("eye",
-                            rotation=eye_in_head_coordinates,
-                            timestamps=self.calib_odo.time.values,#eye_global_timestamps_datetime
-                            parent="t265_calib",
-                            update=True,
-                            )
-        print(self.odometry.angular_velocity)
-        eye_world = rbm.transform_vectors(self.odometry.angular_velocity,
-                               outof="t265_world", into="eye")
+        # self.rbm_head_eye.register_frame("eye",
+        #                     rotation=eye_in_head_coordinates,
+        #                     timestamps=self.calib_odo.time.values,#eye_global_timestamps_datetime
+        #                     parent="t265_calib",
+        #                     update=True,
+        #                     )
+        # print(self.odometry.angular_velocity)
+        # eye_world = rbm.transform_vectors(self.odometry.angular_velocity,
+        #                        outof="t265_world", into="eye")
         
         # eye_world = rbm.lookup_angular_velocity("eye","world_coord",
         #                                         as_dataarray=True,
@@ -610,47 +627,102 @@ class eyeHead():
         # self.gaze['left']['degrees'].values[:, 1] 
         # self.gaze['left']['timestamps']
 
-        plt.figure()
-        plt.plot(self.calib_odo['ang_vel'],label='head')
-        plt.plot(eye_world.values[:, 1],label='eye world') #self.calib_odo.time.values, 
-        plt.show()
-        # plt.close()
-        plt.rcParams.update({
-            'font.size': 16,
-            'axes.labelweight': 'bold',
-            'axes.titlesize': 16,
-            'legend.fontsize': 14,
-        })
-        plt.rcParams["font.weight"] = "bold"
+        # plt.figure()
+        # plt.plot(self.calib_odo['ang_vel'],label='head')
+        # plt.plot(eye_world.values[:, 1],label='eye world') #self.calib_odo.time.values, 
+        # plt.show()
+        # # plt.close()
+        # plt.rcParams.update({
+        #     'font.size': 16,
+        #     'axes.labelweight': 'bold',
+        #     'axes.titlesize': 16,
+        #     'legend.fontsize': 14,
+        # })
+        # plt.rcParams["font.weight"] = "bold"
 
-        plt.figure(figsize=(8, 6))
-        # plt.hist(eye_world.values[:, 0],bins=1000,color='r')
-        # plt.hist(eye_world.values[:, 1],bins=1000,color='b',alpha=0.4)
-        plt.hist2d(x=eye_world.values[:, 0], y=eye_world.values[:, 1], bins=7500, cmap='hot')
-        plt.colorbar(label='Count')
-        plt.title('Heatmap of eye_world')
-        plt.xlabel('X Axis')
-        plt.ylabel('Y Axis')
-        plt.xlim([-50,50])
-        plt.ylim([-50,50])
-        plt.show()
+        # plt.figure(figsize=(8, 6))
+        # # plt.hist(eye_world.values[:, 0],bins=1000,color='r')
+        # # plt.hist(eye_world.values[:, 1],bins=1000,color='b',alpha=0.4)
+        # plt.hist2d(x=eye_world.values[:, 0], y=eye_world.values[:, 1], bins=7500, cmap='hot')
+        # plt.colorbar(label='Count')
+        # plt.title('Heatmap of eye_world')
+        # plt.xlabel('X Axis')
+        # plt.ylabel('Y Axis')
+        # plt.xlim([-50,50])
+        # plt.ylim([-50,50])
+        # plt.show()
 
-        fig, ax1 = plt.subplots()
-        ax1.plot(self.calib_odo.time.values, eye_world[:, 0],
-                  label='Azimuth Velocity (deg/s)', color='blue',linewidth=3.5)
-        ax1.plot(self.calib_odo.time.values, eye_world[:, 1], 
-                 label='Elevation Velocity (deg/s)', color='green',linewidth=3.5)
-        ax1.set_xlabel('Time')
-        ax1.set_ylabel('Eye Velocity (deg/s)', color='black')
-        ax1.legend(loc='upper left')
+        # fig, ax1 = plt.subplots()
+        # ax1.plot(self.calib_odo.time.values, eye_world[:, 0],
+        #           label='Azimuth Velocity (deg/s)', color='blue',linewidth=3.5)
+        # ax1.plot(self.calib_odo.time.values, eye_world[:, 1], 
+        #          label='Elevation Velocity (deg/s)', color='green',linewidth=3.5)
+        # ax1.set_xlabel('Time')
+        # ax1.set_ylabel('Eye Velocity (deg/s)', color='black')
+        # ax1.legend(loc='upper left')
 
-        # Create a second y-axis
-        ax2 = ax1.twinx()
-        ax2.plot(self.calib_odo.time.values, self.calib_odo.lin_vel[:,2].values,
-                  color='red',linewidth=3.5)
-        ax2.set_ylabel('Linear Vertical Head Velocity (m/s)', color='black')
-        ax2.legend(loc='upper right')
-        plt.show()
+        # # Create a second y-axis
+        # ax2 = ax1.twinx()
+        # ax2.plot(self.calib_odo.time.values, self.calib_odo.lin_vel[:,2].values,
+        #           color='red',linewidth=3.5)
+        # ax2.set_ylabel('Linear Vertical Head Velocity (m/s)', color='black')
+        # ax2.legend(loc='upper right')
+        # plt.show()
+    
+    def heat_map(self):
+        print(f'data before nan removal: {self.transformed_angular_velocity_world.shape}')
+        print(self.transformed_angular_velocity_world)
+        #remove nans
+        cleaned_data = self.transformed_angular_velocity_world[~np.isnan(
+            self.transformed_angular_velocity_world).any(axis=1)]  
+        print(f'data after nan removal: {cleaned_data.shape}')  
+        #mean and standard deviation
+        means = np.mean(cleaned_data, axis=0)
+        stds = np.std(cleaned_data, axis=0)
+
+        #filter data within 2 standard deviations from the mean
+        filtered_data = []
+        print(f'data before outlier removal: {cleaned_data.shape}')
+        for row in cleaned_data:
+            if ((abs(row[0]) <= means[0] + 3 * stds[0]) and 
+                (abs(row[1]) <= means[1] + 3 * stds[1]) and 
+                (abs(row[2]) <= means[2] + 3 * stds[2])):
+                filtered_data.append(row)
+            # else:
+            #     filtered_data.append(np.full_like(row, np.nan))  # Replace the entire row with NaNs
+
+        transformed_angular_velocity_world_filtered = np.array(filtered_data)
+        print(f'data after outlier removal: {transformed_angular_velocity_world_filtered.shape}')
+
+        #2D hist
+        data_first_axis = np.rad2deg(transformed_angular_velocity_world_filtered[:, 2])
+        data_last_axis = np.rad2deg(transformed_angular_velocity_world_filtered[:, 1])
+        plt.figure(figsize=(10, 10))
+        plt.hist2d(data_first_axis, data_last_axis, bins=850, cmap='viridis')
+        plt.xlabel('Eye Yaw Velocity (deg/s)')
+        plt.ylabel('Eye Pitch Velocity (deg/s)')
+
+        #cov matrix
+        cov_matrix = np.cov(data_first_axis, data_last_axis)
+        #eigenvalues and eigenvectors of the covariance matrix
+        eigenvalues, eigenvectors = np.linalg.eigh(cov_matrix)
+        #angle of rotation from the eigenvectors
+        angle = np.degrees(np.arctan2(*eigenvectors[:, 1]))
+        #confidence ellipse
+        confidence_level = 0.95
+        width = 2 * np.sqrt(eigenvalues[0] * np.abs(np.log(1 - confidence_level)))
+        height = 2 * np.sqrt(eigenvalues[1] * np.abs(np.log(1 - confidence_level)))
+        ellipse = Ellipse(xy=(np.mean(data_first_axis), np.mean(data_last_axis)), width=width, height=height,
+                        angle=angle, edgecolor='white', facecolor='none', linestyle='--', linewidth=2)
+        if height < width:
+            lims = height
+        else:
+            lims = width
+        plt.xlim([-lims , lims])
+        plt.ylim([-lims , lims])
+        plt.gca().add_patch(ellipse)
+        plt.tight_layout()
+        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world.png'),dpi=400)
 
     def run_analysis(self):
         self.eye_utils()
@@ -663,8 +735,9 @@ class eyeHead():
         self.qc_plot()
         self.convert_norm_pos_to_degrees()
         self.head_calibration()
-        #RBM time
+        #RBM
         self.setup_ref_frame()
+        self.heat_map()
 
 def main():
     eyeHead().run_analysis()
