@@ -17,6 +17,8 @@ from scipy.signal import medfilt
 from matplotlib.patches import Ellipse
 # import seaborn as sns
 from scipy.interpolate import interp1d
+import pandas as pd
+from scipy.signal import find_peaks
 # import pickle
 n_cores = None 
 plt.rcParams['font.weight'] = 'bold'
@@ -110,6 +112,10 @@ def spherical_to_cartesian(azimuth, elevation):
     y = np.cos(np.radians(azimuth)) / np.cos(np.radians(elevation))
     z = np.sin(np.radians(elevation))
     return x, y, z
+
+def check_for_mp4_files(folder_path):
+    mp4_files = [file for file in os.listdir(folder_path) if file.endswith('.mp4')]
+    return bool(mp4_files)
 
 class eyeHead():
     def __init__(self):
@@ -723,8 +729,34 @@ class eyeHead():
         plt.gca().add_patch(ellipse)
         plt.tight_layout()
         plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world.png'),dpi=400)
+        plt.close()
+
+    def gaze_step_cycle(self):
+        #brian take walk seg: 20:00:10 - 20:01:20
+        # print(self.transformed_angular_velocity_world.shape)
+        # print(self.odometry.position.values.shape)
+        odo_pos_down = signal.resample(self.odometry.linear_velocity.values, 
+                                            len(self.transformed_angular_velocity_world))
+        
+        #downsample time
+        time_series = pd.to_datetime(self.odometry.time.values)
+        df = pd.DataFrame(index=time_series, data={'values': range(len(time_series))})
+        downsample_factor = len(time_series) / len(self.transformed_angular_velocity_world)
+        downsampled_indices = np.floor(np.arange(0, len(time_series), downsample_factor)).astype(int)
+        resampled_df = df.iloc[downsampled_indices].interpolate(method='time')
+        resampled_time_index = resampled_df.index
+        time_odo_eye = resampled_time_index.to_numpy()
+
+        find_peaks_stride, _= find_peaks(odo_pos_down[:,1],distance=30)
+        plt.figure()
+        plt.plot(time_odo_eye[find_peaks_stride],odo_pos_down[find_peaks_stride,1],marker='*')
+        plt.plot(time_odo_eye,odo_pos_down[:,1])
+        plt.show()
+
+
 
     def run_analysis(self):
+        #vedb takes with video
         self.eye_utils()
         self.calibration_markers_find()
         self.load_pylids()
@@ -738,6 +770,7 @@ class eyeHead():
         #RBM
         self.setup_ref_frame()
         self.heat_map()
+        self.gaze_step_cycle()
 
 def main():
     eyeHead().run_analysis()
