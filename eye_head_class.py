@@ -13,12 +13,13 @@ import rigid_body_motion as rbm
 # from scipy.spatial.transform import Rotation
 from scipy import signal
 # from scipy.ndimage import gaussian_filter1d
-from scipy.signal import medfilt
+from scipy.signal import medfilt, savgol_filter
 from matplotlib.patches import Ellipse
 # import seaborn as sns
 from scipy.interpolate import interp1d
 import pandas as pd
 from scipy.signal import find_peaks
+from datetime import datetime
 # import pickle
 n_cores = None 
 plt.rcParams['font.weight'] = 'bold'
@@ -116,6 +117,30 @@ def spherical_to_cartesian(azimuth, elevation):
 def check_for_mp4_files(folder_path):
     mp4_files = [file for file in os.listdir(folder_path) if file.endswith('.mp4')]
     return bool(mp4_files)
+
+
+def custom_moving_average_wrap_df(df, column, window_size_percent, median=False):
+    result_mean = pd.Series(index=df.index, dtype=float)
+    result_std = pd.Series(index=df.index, dtype=float)
+    for i in range(len(df)):
+        window_size = int(len(df) * window_size_percent / 100)
+        start_idx = i - window_size
+        end_idx = i + window_size + 1
+
+        if start_idx < 0:
+            window_data = pd.concat([df[column].iloc[start_idx:], df[column].iloc[:end_idx]])
+        elif end_idx > len(df):
+            window_data = pd.concat([df[column].iloc[start_idx:], df[column].iloc[:end_idx - len(df)]])
+        else:
+            window_data = df[column].iloc[start_idx:end_idx]
+        if median == False:
+            result_mean.iloc[i] = window_data.mean()
+            result_std.iloc[i] = window_data.std()
+        else:
+            result_mean.iloc[i] = window_data.median()
+            result_std.iloc[i] = window_data.std()
+
+    return result_mean,result_std
 
 class eyeHead():
     def __init__(self):
@@ -732,10 +757,25 @@ class eyeHead():
         plt.close()
 
     def gaze_step_cycle(self):
-        #brian take walk seg: 20:00:10 - 20:01:20
-        # print(self.transformed_angular_velocity_world.shape)
-        # print(self.odometry.position.values.shape)
-        odo_pos_down = signal.resample(self.odometry.linear_velocity.values, 
+        #brian_walk_test: walk seg: 20:00:10 - 20:01:20
+        #2022_02_09_13_40_13_test_walk_session walk seg:  21:44:20 - 21:56:00
+        # plt.figure()
+        # plt.plot(self.odometry.time.values,self.odometry.linear_velocity.values[:,1])
+        # plt.show()
+        # plt.close()
+
+        #some takes have nans in the odometry data
+        if np.isnan(self.odometry.linear_velocity.values).any():
+            nan_indices = np.isnan(self.odometry.linear_velocity.values)
+            x = np.arange(self.odometry.linear_velocity.values.shape[0])
+            interpolated_data = np.empty_like(self.odometry.linear_velocity.values)
+            for i in range(self.odometry.linear_velocity.values.shape[1]):
+                valid_indices = ~nan_indices[:, i]
+                interp_func = interp1d(x[valid_indices], self.odometry.linear_velocity.values[valid_indices, i], kind='linear', fill_value='extrapolate')
+                interpolated_data[:, i] = interp_func(x)
+        else:
+            interpolated_data = self.odometry.linear_velocity.values
+        odo_pos_down = signal.resample(interpolated_data, 
                                             len(self.transformed_angular_velocity_world))
         
         #downsample time
@@ -747,11 +787,89 @@ class eyeHead():
         resampled_time_index = resampled_df.index
         time_odo_eye = resampled_time_index.to_numpy()
 
-        find_peaks_stride, _= find_peaks(odo_pos_down[:,1],distance=30)
-        plt.figure()
-        plt.plot(time_odo_eye[find_peaks_stride],odo_pos_down[find_peaks_stride,1],marker='*')
-        plt.plot(time_odo_eye,odo_pos_down[:,1])
-        plt.show()
+        #extract walking segment
+        time_odo_eye = pd.to_datetime(time_odo_eye)
+        target_time_start = "21:44:20"#input("Enter the first target time (format: HH:MM:SS): ")
+        target_time_end = "21:56:00"#input("Enter the second target time (format: HH:MM:SS): ")
+
+        target1 = datetime.strptime(target_time_start, '%H:%M:%S')
+        target2 = datetime.strptime(target_time_end, '%H:%M:%S')
+
+        target_date = pd.to_datetime(time_odo_eye[0]).date()
+        target1 = target1.replace(year=target_date.year, month=target_date.month, day=target_date.day)
+        target2 = target2.replace(year=target_date.year, month=target_date.month, day=target_date.day)
+
+        time_diff1 = np.abs(time_odo_eye - np.datetime64(target1))
+        time_diff2 = np.abs(time_odo_eye - np.datetime64(target2))
+        closest_index1 = np.argmin(time_diff1)
+        closest_index2 = np.argmin(time_diff2)
+
+        walk_times = time_odo_eye[closest_index1:closest_index2]
+        odo_pos_down_walk = odo_pos_down[closest_index1:closest_index2,:]
+        eye_vel_walk = self.transformed_angular_velocity_world[closest_index1:closest_index2,:]
+
+        find_peaks_step, _= find_peaks(odo_pos_down_walk[:,1],distance=45)
+
+        # plt.figure()
+        # plt.plot(walk_times,odo_pos_down_walk[:,1])
+        # plt.scatter(walk_times[find_peaks_step],odo_pos_down_walk[find_peaks_step,1],marker='*',color='red')
+        # plt.show()
+
+        list_gait, list_yaw, list_pitch = [], [], []
+        for i in tqdm(range(len(find_peaks_step)-1)):
+            diff_samples = find_peaks_step[i+1] - find_peaks_step[i]
+            gait_percentage = np.linspace(0,100,num=diff_samples)
+            eye_step = np.rad2deg(eye_vel_walk[find_peaks_step[i]:find_peaks_step[i+1],:])
+            list_gait.append(gait_percentage)
+            list_yaw.append(eye_step[:,2])
+            list_pitch.append(eye_step[:,1])
+    
+        list_gait = np.concatenate(list_gait)
+        list_yaw = np.concatenate(list_yaw)
+        list_pitch = np.concatenate(list_pitch)
+
+        df = pd.DataFrame({'gait_per': list_gait, "yaw_vel": list_yaw, "pitch_vel": list_pitch})
+        df.sort_values(by='gait_per',inplace=True)
+        df['norm'] = np.linalg.norm(df[['yaw_vel', 'pitch_vel']].values, axis=1)
+
+        # df['yaw_vel'] = savgol_filter(df['yaw_vel'],231,2)
+        # df['pitch_vel'] = savgol_filter(df['pitch_vel'],231,2)
+        # df['norm'] = savgol_filter(df['pitch_vel'],231,2)
+        
+        mean_yaw_vel = df['yaw_vel'].mean()
+        std_yaw_vel = df['yaw_vel'].std()
+
+        mean_pitch_vel = df['pitch_vel'].mean()
+        std_pitch_vel = df['pitch_vel'].std()
+
+        df_filtered = df[~((df['yaw_vel'] > mean_yaw_vel + 3 * std_yaw_vel) | (df['yaw_vel'] < mean_yaw_vel - 3 * std_yaw_vel) |
+                        (df['pitch_vel'] > mean_pitch_vel + 3 * std_pitch_vel) | (df['pitch_vel'] < mean_pitch_vel - 3 * std_pitch_vel))]
+
+        yaw_vel_roll, yaw_std_vel = custom_moving_average_wrap_df(df_filtered,'yaw_vel',5)
+        pitch_vel_roll, pitch_std_vel = custom_moving_average_wrap_df(df_filtered,'pitch_vel',5)
+        norm_vel_roll, norm_std_vel = custom_moving_average_wrap_df(df_filtered,'norm',5)
+
+        norm_std_vel = savgol_filter(norm_std_vel,27,2)
+    
+        # fig, ax = plt.subplots(nrows=3,ncols=1)
+        # ax[0].plot(df['gait_per'],yaw_vel_roll,linewidth=3)
+        # ax[1].plot(df['gait_per'],pitch_vel_roll,linewidth=3)
+        plt.figure(figsize=(8,8))
+        plt.plot(df_filtered['gait_per'], norm_vel_roll, linewidth=3, label='Rolling Mean')
+        plt.fill_between(df_filtered['gait_per'], norm_vel_roll - norm_std_vel, 
+                         norm_vel_roll + norm_std_vel, alpha=0.5, label='Rolling STDEV')
+        plt.xlabel('Step Cycle (%)')
+        plt.ylabel('Eye Velocity Norm (deg/s)')
+        plt.tight_layout()
+        # plt.legend()
+        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world_step_cycle.png'),dpi=400)
+        plt.close()
+
+
+        # plt.figure()
+        # plt.plot(walk_times[find_peaks_stride],odo_pos_down_walk[find_peaks_stride,1],marker='*')
+        # plt.plot(walk_times,odo_pos_down_walk[:,1])
+        # plt.show()
 
 
 
