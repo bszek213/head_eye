@@ -700,12 +700,18 @@ class eyeHead():
         # ax2.legend(loc='upper right')
         # plt.show()
     
-    def heat_map(self):
-        print(f'data before nan removal: {self.transformed_angular_velocity_world.shape}')
-        print(self.transformed_angular_velocity_world)
+    def heat_map(self,start_index=None,end_index=None):
+        if start_index is not None and end_index is not None:
+            eye_ang_vel_seg = self.transformed_angular_velocity_world[start_index:end_index, :]
+            walk_segment = "walk_segment"
+        else:
+            eye_ang_vel_seg = self.transformed_angular_velocity_world
+            walk_segment = "whole_take"
+
+        print(f'data before nan removal: {eye_ang_vel_seg.shape}')
         #remove nans
-        cleaned_data = self.transformed_angular_velocity_world[~np.isnan(
-            self.transformed_angular_velocity_world).any(axis=1)]  
+        cleaned_data = eye_ang_vel_seg[~np.isnan(
+            eye_ang_vel_seg).any(axis=1)]  
         print(f'data after nan removal: {cleaned_data.shape}')  
         #mean and standard deviation
         means = np.mean(cleaned_data, axis=0)
@@ -729,7 +735,10 @@ class eyeHead():
         data_first_axis = np.rad2deg(transformed_angular_velocity_world_filtered[:, 2])
         data_last_axis = np.rad2deg(transformed_angular_velocity_world_filtered[:, 1])
         plt.figure(figsize=(10, 10))
-        plt.hist2d(data_first_axis, data_last_axis, bins=850, cmap='viridis')
+        if walk_segment == "walk_segment":
+            plt.hist2d(data_first_axis, data_last_axis, bins=500, cmap='jet')
+        else:
+            plt.hist2d(data_first_axis, data_last_axis, bins=850, cmap='jet')
         plt.xlabel('Eye Yaw Velocity (deg/s)')
         plt.ylabel('Eye Pitch Velocity (deg/s)')
 
@@ -753,16 +762,12 @@ class eyeHead():
         plt.ylim([-lims , lims])
         plt.gca().add_patch(ellipse)
         plt.tight_layout()
-        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world.png'),dpi=400)
+        plt.savefig(os.path.join(self.input_folder,f'eye_ang_vel_world{walk_segment}.png'),dpi=400)
         plt.close()
 
     def gaze_step_cycle(self):
         #brian_walk_test: walk seg: 20:00:10 - 20:01:20
         #2022_02_09_13_40_13_test_walk_session walk seg:  21:44:20 - 21:56:00
-        # plt.figure()
-        # plt.plot(self.odometry.time.values,self.odometry.linear_velocity.values[:,1])
-        # plt.show()
-        # plt.close()
 
         #some takes have nans in the odometry data
         if np.isnan(self.odometry.linear_velocity.values).any():
@@ -778,6 +783,11 @@ class eyeHead():
         odo_pos_down = signal.resample(interpolated_data, 
                                             len(self.transformed_angular_velocity_world))
         
+        for axes in range(odo_pos_down.shape[1]):
+            odo_pos_down[:,axes] = savgol_filter(odo_pos_down[:,0],91,2)
+        for axes in range(self.transformed_angular_velocity_world.shape[1]):
+            self.transformed_angular_velocity_world[:,axes] = savgol_filter(self.transformed_angular_velocity_world[:,axes],13,2)
+
         #downsample time
         time_series = pd.to_datetime(self.odometry.time.values)
         df = pd.DataFrame(index=time_series, data={'values': range(len(time_series))})
@@ -789,8 +799,8 @@ class eyeHead():
 
         #extract walking segment
         time_odo_eye = pd.to_datetime(time_odo_eye)
-        target_time_start = "21:44:20"#input("Enter the first target time (format: HH:MM:SS): ")
-        target_time_end = "21:56:00"#input("Enter the second target time (format: HH:MM:SS): ")
+        target_time_start = "20:00:10"#"21:44:20"# #input("Enter the first target time (format: HH:MM:SS): ")
+        target_time_end = "20:01:20"#"21:56:00"#input("Enter the second target time (format: HH:MM:SS): ")
 
         target1 = datetime.strptime(target_time_start, '%H:%M:%S')
         target2 = datetime.strptime(target_time_end, '%H:%M:%S')
@@ -807,13 +817,43 @@ class eyeHead():
         walk_times = time_odo_eye[closest_index1:closest_index2]
         odo_pos_down_walk = odo_pos_down[closest_index1:closest_index2,:]
         eye_vel_walk = self.transformed_angular_velocity_world[closest_index1:closest_index2,:]
-
+        
+        self.heat_map(closest_index1,closest_index2)
         find_peaks_step, _= find_peaks(odo_pos_down_walk[:,1],distance=45)
 
+        # fig, ax1 = plt.subplots(figsize=(15,10))
+        # #brian segment for illustration index start and end: 5011 - 5127
+        # start_figure_ill = 5011
+        # end_figure_ill = 5127
+        # gait_percentage = np.linspace(0,100,num=(end_figure_ill - start_figure_ill))
+        # ax1.plot(gait_percentage, 
+        #          odo_pos_down_walk[start_figure_ill:end_figure_ill,1], 
+        #          label='Head Vertical Linear Velocity', color='tab:blue',linewidth=3)
+        # ax1.set_xlabel('Step Percentage (%)')
+        # ax1.set_ylabel('Linear velocity (m/s)', color='k')
+        # ax1.legend()
+        # ax1.tick_params(axis='y', labelcolor='k')
+        # ax2 = ax1.twinx()
+        # ax2.plot(gait_percentage, 
+        #          np.rad2deg(eye_vel_walk[start_figure_ill:end_figure_ill,1]), 
+        #          label='Eye Pitch Velocity', color='tab:orange',linewidth=3)
+        # ax2.plot(gait_percentage, 
+        #          np.rad2deg(eye_vel_walk[start_figure_ill:end_figure_ill,2]), 
+        #          label='Eye Yaw Velocity', color='tab:red',linewidth=3)
+        # ax2.set_ylabel('Eye Angular Velocity (deg/s)', color='k')
+        # ax2.tick_params(axis='y', labelcolor='k')
+        # ax2.legend()
+        # fig.tight_layout()
+        # plt.savefig(os.path.join(self.input_folder,'hed_eye_one_step.png'),dpi=400)
+        # plt.close()
+
         # plt.figure()
-        # plt.plot(walk_times,odo_pos_down_walk[:,1])
+        # plt.plot(walk_times,odo_pos_down_walk[:,1],label='T265 Vertical Linear Velocity')
+        # plt.plot(walk_times,eye_vel_walk[:,1],label='Eye Pitch Velocity')
         # plt.scatter(walk_times[find_peaks_step],odo_pos_down_walk[find_peaks_step,1],marker='*',color='red')
+        # plt.legend()
         # plt.show()
+        # plt.close()
 
         list_gait, list_yaw, list_pitch = [], [], []
         for i in tqdm(range(len(find_peaks_step)-1)):
@@ -849,20 +889,42 @@ class eyeHead():
         pitch_vel_roll, pitch_std_vel = custom_moving_average_wrap_df(df_filtered,'pitch_vel',5)
         norm_vel_roll, norm_std_vel = custom_moving_average_wrap_df(df_filtered,'norm',5)
 
-        norm_std_vel = savgol_filter(norm_std_vel,27,2)
+        # norm_std_vel = savgol_filter(norm_std_vel,27,2)
     
         # fig, ax = plt.subplots(nrows=3,ncols=1)
         # ax[0].plot(df['gait_per'],yaw_vel_roll,linewidth=3)
         # ax[1].plot(df['gait_per'],pitch_vel_roll,linewidth=3)
         plt.figure(figsize=(8,8))
+        plt.plot(df_filtered['gait_per'], pitch_vel_roll, linewidth=3, label='Rolling Mean')
+        plt.fill_between(df_filtered['gait_per'], pitch_vel_roll - pitch_std_vel, 
+                         pitch_vel_roll + pitch_std_vel, alpha=0.5, label='Rolling STDEV')
+        plt.xlabel('Step Cycle (%)')
+        plt.ylabel('Eye Pitch Velocity (deg/s)')
+        plt.tight_layout()
+        # plt.legend()
+        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world_step_cycle_pitch.png'),dpi=400)
+        plt.close()
+
+        plt.figure(figsize=(8,8))
+        plt.plot(df_filtered['gait_per'], yaw_vel_roll, linewidth=3, label='Rolling Mean')
+        plt.fill_between(df_filtered['gait_per'], yaw_vel_roll - yaw_std_vel, 
+                         yaw_vel_roll + yaw_std_vel, alpha=0.5, label='Rolling STDEV')
+        plt.xlabel('Step Cycle (%)')
+        plt.ylabel('Eye Yaw Velocity (deg/s)')
+        plt.tight_layout()
+        # plt.legend()
+        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world_step_cycle_yaw.png'),dpi=400)
+        plt.close()
+
+        plt.figure(figsize=(8,8))
         plt.plot(df_filtered['gait_per'], norm_vel_roll, linewidth=3, label='Rolling Mean')
         plt.fill_between(df_filtered['gait_per'], norm_vel_roll - norm_std_vel, 
                          norm_vel_roll + norm_std_vel, alpha=0.5, label='Rolling STDEV')
         plt.xlabel('Step Cycle (%)')
-        plt.ylabel('Eye Velocity Norm (deg/s)')
+        plt.ylabel('Eye Norm Velocity (deg/s)')
         plt.tight_layout()
         # plt.legend()
-        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world_step_cycle.png'),dpi=400)
+        plt.savefig(os.path.join(self.input_folder,'eye_ang_vel_world_step_cycle_norm.png'),dpi=400)
         plt.close()
 
 
